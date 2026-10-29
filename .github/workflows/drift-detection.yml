@@ -1,0 +1,36 @@
+name: 'Scheduled Nightly Drift Detection'
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Every night at 02:00 AM UTC
+  workflow_dispatch:
+
+jobs:
+  drift_check:
+    name: 'Check Configuration Drift'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.0
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Run Speculative Drift Plan
+        run: |
+          echo "Checking for unmanaged manual console mutations..."
+          terraform plan -detailed-exitcode -no-color || exit_code=$?
+          if [ $exit_code -eq 2 ]; then
+            echo "::warning ::Configuration drift detected between code and Azure real-world state!"
+          elif [ $exit_code -eq 0 ]; then
+            echo "Zero drift detected. Cloud state matches Terraform code."
+          else
+            echo "Terraform plan encountered an error."
+            exit $exit_code
+          fi
